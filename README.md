@@ -1,6 +1,23 @@
 # EtherCAT on Raspberry Pi 4b
+This is my take on running EtherCAT master on Raspberry Pi 4b using a Ubuntu Server 24.04.4 LTS (64-bit) with Ubuntu Pro Free Personal Token enabling the RealTime kernel.
+
+## Used hardware
+Raspberry Pi side:
+* **Raspberry Pi 4b** with microSD card
+* USB-C cable and power adapter
+* micro-HDMI to HDMI cable
+* HDMI display
+* USB-A keyboard
+
+PC side:
+* **MacBook M2 Pro**
+* USB-C microSD card reader (dongle from Alza.cz)
+
+Others:
+* WiFi with internet access 
 
 ## Before Installing
+Prepare the image for a Raspberry Pi 4b.
 
 ### 1. Raspberry Pi Imager
 * Set up image of Ubuntu Server 24.04.4 LTS (64-bit).
@@ -15,8 +32,9 @@
 * Wait for about 5 mins to go through initial setup.
 
 ## Installation
+I was not able to SSH to RPi, because SSH was disabled by default. **Ubuntu Server** also runs initialization scripts for about *5 mins* on the first startup. I used a display and a keyboard instead.
 
-### 3. Enahle SSH
+### 1. Enahle SSH
 This step was unsuccessful, RPi can `ping google.com` but cannot ping my PC, also PC cannot ping RPi. If you want to set up the rest remotely, enable SSH.
 
 To get SSH status, run:
@@ -32,7 +50,7 @@ For me it didn't work, my RPi is still unreachable as well as my PC from RPi.
 
 ---
 
-### 4. Enable RT
+### 2. Enable RT
 Update and Upgrade all packages.
 ```bash
 sudo apt update
@@ -57,7 +75,7 @@ sudo reboot
 
 ---
 
-### 5. Test the RT kernel
+### 3. Test the RT kernel
 Verify the `PREEMPT_RT` is active by running:
 ```bash
 uname -a
@@ -72,7 +90,7 @@ Once you see the RT kernel, you can move on.
 
 ---
 
-### 6. Libraries
+### 4. Libraries
 Install all necessary dependencies.
 ```bash
 sudo apt install git cmake build-essential -y
@@ -80,7 +98,7 @@ sudo apt install git cmake build-essential -y
 
 ---
 
-### 7. SOEM (Simple Open EtherCAT Master)
+### 5. SOEM (Simple Open EtherCAT Master)
 Create a directory for all new files (optional).
 
 ```bash
@@ -113,8 +131,11 @@ sudo make install
 sudo ldconfig
 ```
 
+
+
 ## Create a Project
-### 8. Workspace
+> This part was generated using Gemini and hasn't been tested yet.
+### 1. Workspace
 Create you workspace directory.
 ```bash
 cd ~
@@ -151,7 +172,9 @@ target_link_libraries(my_app ${SOEM_LIBRARY} pthread rt)
 
 Save and exit (`CTRL+o`, `Enter`, `CTRL+x`).
 
-### Script
+---
+
+### 2. Script
 
 Create your main file with `nano main.c`.
 ```c
@@ -228,7 +251,9 @@ int main(int argc, char *argv[]) {
 }
 ```
 
-### Compile and run
+---
+
+### 3. Compile and run
 Build your program.
 ```bash
 mkdir build
