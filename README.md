@@ -131,6 +131,21 @@ sudo make install
 sudo ldconfig
 ```
 
+---
+
+### 6. Install other packages
+To manage wireless connecitons, install packages excluded from the minimal Server distro.
+
+```bash
+sudo apt install wireless-tools iw -y
+```
+
+After that, the power save state can be checked and turned off if active. This will prevent turning off the WiFi chip in Raspi, which could disable SSH.
+```bash
+iw dev wlan0 get power_save
+sudo iw dev wlan0 set power_save off
+```
+
 
 
 ## Create a Project
@@ -187,7 +202,7 @@ Create your main file with `nano main.c`.
 
 // Your network interface name
 char IOmap[4096];
-char ifname[] = "end0"; 
+char ifname[] = "eth0";
 
 void* ethercat_rt_loop(void *arg) {
     // 1. Tell the RT Kernel to give this thread MAXIMUM PRIORITY
