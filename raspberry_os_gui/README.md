@@ -110,3 +110,8 @@ sudo cp arch/arm64/boot/dts/overlays/README /boot/firmware/overlays/
 
 ### 5. Reboot
 Reboot the Raspberry Pi to load the new Kernel. The old kernel is backed up as `$KERNEL-backup.img`.
+
+---
+
+## EtherCAT Master
+The goal is to use SOEM first, in combination with PySOEM to create simple apps to communicate with the motor.
