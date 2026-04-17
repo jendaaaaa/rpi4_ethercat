@@ -115,3 +115,77 @@ Reboot the Raspberry Pi to load the new Kernel. The old kernel is backed up as `
 
 ## EtherCAT Master
 The goal is to use SOEM first, in combination with PySOEM to create simple apps to communicate with the motor.
+
+### 1. SOEM
+Install all necessary dependencies.
+```bash
+sudo apt install git cmake build-essential -y
+```
+
+Clone the SOEM repository.
+```bash
+git clone https://github.com/OpenEtherCATsociety/SOEM.git
+```
+
+Create a build directory, configure and compile the code.
+```bash
+cd SOEM
+mkdir build
+cd build
+cmake ..
+make
+```
+
+Now you can test scanning slaves using:
+```bash
+sudo ./samples/slaveinfo/slaveinfo eth0
+```
+
+### 2. PySOEM
+Create venv inside a designated directory and install Python SOEM library.
+```bash
+# venv
+python -m venv .venv
+source .venv/bin/activate
+
+# library
+pip install pysoem
+```
+
+Try to run a test script to see if PySOEM works.
+```python
+import pysoem
+import sys
+
+NETWORK_IFACE = 'eth0' 
+
+def test_connection():
+    master = pysoem.Master()
+    
+    try:
+        master.open(NETWORK_IFACE)
+        print(f"Successfully opened {NETWORK_IFACE}")
+    except Exception as e:
+        print(f"Failed to open interface: {e}")
+        sys.exit(1)
+
+    # config_init() scans the network for slaves
+    if master.config_init() > 0:
+        print(f"\nSuccess! Found {len(master.slaves)} EtherCAT slave(s):")
+        for i, slave in enumerate(master.slaves):
+            print(f"  [{i+1}] {slave.name}")
+    else:
+        print("\nNo slaves found. Check your ethernet cable and ensure the Maxon drive is powered on.")
+
+    master.close()
+
+if __name__ == '__main__':
+    test_connection()
+```
+
+To run the Python file as root but with the venv active, use this command:
+```bash
+sudo ~/PySOEM/.venv/bin/python ~/PySOEM/test.py
+```
+
+This enables the ethernet access to Python script and can use the EtherCAT.
