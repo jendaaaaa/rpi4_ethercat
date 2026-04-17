@@ -1,5 +1,5 @@
 # Ubuntu Server Pro LTS
-This is my take on running EtherCAT master on Raspberry Pi 4b using a Ubuntu Server 24.04.4 LTS (64-bit) with Ubuntu Pro Free Personal Token enabling the RealTime kernel.
+Attempt to run EtherCAT master on Raspberry Pi 4b using a Ubuntu Server 24.04.4 LTS (64-bit) with Ubuntu Pro Free Personal Token enabling the RealTime kernel.
 
 ## Used hardware
 Raspberry Pi side:
@@ -16,6 +16,8 @@ PC side:
 Others:
 * WiFi with internet access 
 
+---
+
 ## Before Installing
 Prepare the image for a Raspberry Pi 4b.
 
@@ -24,12 +26,12 @@ Prepare the image for a Raspberry Pi 4b.
 * Configure WiFi name and password.
 * Enable SSH (i used login and password).
 
----
-
 ### 2. Ubuntu Server
 * Plug SSD into Raspberry Pi 4b.
 * Turn it on.
 * Wait for about 5 mins to go through initial setup.
+
+---
 
 ## Installation
 I was not able to SSH to RPi, because SSH was disabled by default. **Ubuntu Server** also runs initialization scripts for about *5 mins* on the first startup. I used a display and a keyboard instead.
