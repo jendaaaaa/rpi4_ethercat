@@ -1,0 +1,10 @@
+#!/bin/bash
+# Check if an argument was provided
+if [ -z "$1" ]; then
+    echo "Usage: run_realtime <path_to_script.py>"
+    exit 1
+fi
+
+# The base command with your preferred real-time settings
+# We use "$@" to pass any arguments provided to this script
+sudo taskset -c 3 chrt -f 99 /home/admin/PySOEM/.venv/bin/python3 "$@"

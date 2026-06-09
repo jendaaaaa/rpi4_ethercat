@@ -199,3 +199,37 @@ This enables the ethernet access to Python script and can use the EtherCAT.
 * [set_and_check.py](set_and_check.py) - Changes the mode of operation to the Cyclic Synchronous Velocity mode and prints a confirmation message - asks HEJ about the mode.
 
 * [run_csv.py](run_csv.py) - Sets the mode to CSV, sets the TxPDO and RxPDO to contain the target value and actual value, switches to SafeOP, then OP and sets the target velocity to 5000.
+
+### 4. Custom Shell script for running Python scripts
+
+Create a file in home directory with `touch ~/run_realtime`. Then paste this code:
+
+```bash
+#!/bin/bash
+# Check if an argument was provided
+if [ -z "$1" ]; then
+    echo "Usage: run_realtime <path_to_script.py>"
+    exit 1
+fi
+
+# The base command with your preferred real-time settings
+# We use "$@" to pass any arguments provided to this script
+sudo taskset -c 3 chrt -f 99 /home/admin/PySOEM/.venv/bin/python3 "$@"
+```
+
+Make it executable.
+
+```bash
+chmod +x ~/run_realtime
+```
+
+Make it a global command.
+
+```bash
+sudo mv ~/run-realtime /usr/local/bin/run-realtime
+```
+
+CD to a directory with the Python scripts and use it like this:
+```bash
+run_realtime run_jpvt.py
+```
