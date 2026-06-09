@@ -1,4 +1,4 @@
-# sudo taskset -c 3 chrt -f 99 .venv/bin/python3 run_jpvt_tx_filtered.py
+# sudo taskset -c 3 chrt -f 99 .venv/bin/python3 rpi4_ethercat/raspberry_os_gui/test_scripts/run_jpvt.py
 
 import time
 import struct
@@ -220,26 +220,20 @@ def shutdown(master):
 def write_i8(drive, index, subindex, value):
     drive.sdo_write(index, subindex, struct.pack("<b", int(value)))
 
-
 def read_i8(drive, index, subindex):
     return struct.unpack("<b", drive.sdo_read(index, subindex)[:1])[0]
-
 
 def write_i32(drive, index, subindex, value):
     drive.sdo_write(index, subindex, struct.pack("<i", int(value)))
 
-
 def read_i32(drive, index, subindex):
     return struct.unpack("<i", drive.sdo_read(index, subindex)[:4])[0]
-
 
 def write_u32(drive, index, subindex, value):
     drive.sdo_write(index, subindex, struct.pack("<I", int(value)))
 
-
 def read_u32(drive, index, subindex):
     return struct.unpack("<I", drive.sdo_read(index, subindex)[:4])[0]
-
 
 if __name__ == "__main__":
     main()
