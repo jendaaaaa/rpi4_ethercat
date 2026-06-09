@@ -192,13 +192,13 @@ This enables the ethernet access to Python script and can use the EtherCAT.
 
 ### 3. PySOEM testing scripts
 
-* [safeop_state.py](safeop_state.py) - Change state to SafeOp and read data from HEJ (just to test the connection).
+* [safeop_state.py](test_scripts/safeop_state.py) - Change state to SafeOp and read data from HEJ (just to test the connection).
 
-* [check_state.py](check_state.py) - Prints out the current mode of operation of the HEJ (CiA402 reliant with additional proprietary modes with invalid values like `-64` etc.)
+* [check_state.py](test_scripts/check_state.py) - Prints out the current mode of operation of the HEJ (CiA402 reliant with additional proprietary modes with invalid values like `-64` etc.)
 
-* [set_and_check.py](set_and_check.py) - Changes the mode of operation to the Cyclic Synchronous Velocity mode and prints a confirmation message - asks HEJ about the mode.
+* [set_and_check.py](test_scripts/set_and_check.py) - Changes the mode of operation to the Cyclic Synchronous Velocity mode and prints a confirmation message - asks HEJ about the mode.
 
-* [run_csv.py](run_csv.py) - Sets the mode to CSV, sets the TxPDO and RxPDO to contain the target value and actual value, switches to SafeOP, then OP and sets the target velocity to 5000.
+* [run_csv.py](test_scripts/run_csv.py) - Sets the mode to CSV, sets the TxPDO and RxPDO to contain the target value and actual value, switches to SafeOP, then OP and sets the target velocity to 5000.
 
 ### 4. Custom Shell script for running Python scripts
 
