@@ -26,3 +26,9 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 - After going through all the parameters in the PDO with HEJ unplugged, the Target Velocity formatted in a different way, from 5.000rpm to just raw value 5000, therefore the whole problem was setting too low Target Velocity.
 - After setting the Target Velocity to 5000 instead of 5, the motor moved!!
 - Also made the PVM work. Now i need to create some kind of framework for the PySOEM and specific firmware of HEJ to make a good state machine core made of modules to then use it for predefined movement sequences.
+
+#### 9.6.
+- Verified the JPVT mode. To control the velocity, set the JPVTC controller D gain to around `10_000`. Then set **Target Velocity** to `10_000` as well. Then set the `controlword` to `0x0006` and then `0x000F` and it spins!
+- To control position, set the P gain to around `0.5` (maybe 500 -> needs to be verified in EPOS Studio), the rest is the same. Then keep changing the **Target Position** to values with step of around `400`.
+- The velocity control in JPVT mode was tested using **EPOS Studio** and also the **PySOEM from RPi**.
+- The position control in JPVT mode was tested using **EPOS Studio** only.
