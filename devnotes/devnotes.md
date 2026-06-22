@@ -32,3 +32,7 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 - To control position, set the P gain to around `0.5` (maybe 500 -> needs to be verified in EPOS Studio), the rest is the same. Then keep changing the **Target Position** to values with step of around `400`.
 - The velocity control in JPVT mode was tested using **EPOS Studio** and also the **PySOEM from RPi**.
 - The position control in JPVT mode was tested using **EPOS Studio** only.
+
+
+#### 22.6.
+- Creating a custom library for controlling multiple devices in JPVT mode in a desired motion like a sine wave.
