@@ -33,6 +33,8 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 - The velocity control in JPVT mode was tested using **EPOS Studio** and also the **PySOEM from RPi**.
 - The position control in JPVT mode was tested using **EPOS Studio** only.
 
-
 #### 22.6.
 - Creating a custom library for controlling multiple devices in JPVT mode in a desired motion like a sine wave.
+- Deciding on the structure of the project. Ideas:
+    - Stick with Python.
+    - Create a simple codebase that will move the motor in a sine wave (pos) and record the commands, actual values and timestamps.
