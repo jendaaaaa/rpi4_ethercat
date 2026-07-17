@@ -38,3 +38,7 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 - Deciding on the structure of the project. Ideas:
     - Stick with Python.
     - Create a simple codebase that will move the motor in a sine wave (pos) and record the commands, actual values and timestamps.
+
+#### 17.7
+- Working on the library, first making the JPVT velocity control work together with an IPC.
+- Created v0 to try to replicate the run_JPVT.py script by controlling it from another script.
