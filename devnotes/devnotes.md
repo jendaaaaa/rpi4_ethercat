@@ -44,4 +44,8 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 - Created v0 to try to replicate the run_JPVT.py script by controlling it from another script.
 
 #### 3.9.
-- New script `run_jpvt_2.py` for reading the position.
+- New local scripts for reading the position, then also controlling the position from script!
+- For testing, there is a new `run_jpvt_v2.py` in [test_scripts](../raspberry_os_gui/test_scripts/). It now has a correct anti-aliasing filter based on the EtherCAT frequency, also reads position, correctly scales the target and fusion position. Sets an absolute position calculated from relative offset and fusion position value.
+- What to do next:
+    - Add state machine and commands from a socket.
+    - Add homing capability or something like that, but that might be part of the state machine - add `idle`, move the leg to desired position, set it as default, then use homing. Maybe copy mechanisms from existing projects.
