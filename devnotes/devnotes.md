@@ -42,3 +42,6 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 #### 17.7
 - Working on the library, first making the JPVT velocity control work together with an IPC.
 - Created v0 to try to replicate the run_JPVT.py script by controlling it from another script.
+
+#### 3.9.
+- New script `run_jpvt_2.py` for reading the position.
