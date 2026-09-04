@@ -6,3 +6,7 @@ The script [run_jpvt.py](../raspberry_os_gui/test_scripts/run_jpvt.py) serves as
 The RPi runnig the scripts is based on the RaspberryOS with the PREEMPT_RT, as previously described in [raspberry_os_gui](../raspberry_os_gui/).
 
 To run any of the script, a custom shell script is used, as described in [raspberry_os_gui/README.md](../raspberry_os_gui/README.md).
+
+## v0
+
+Working test script for controlling 1 drive using commands through Unix socket. Currently only [v0.3](./v0_3/) is working.
