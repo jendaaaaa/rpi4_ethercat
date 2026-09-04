@@ -49,3 +49,10 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 - What to do next:
     - Add state machine and commands from a socket.
     - Add homing capability or something like that, but that might be part of the state machine - add `idle`, move the leg to desired position, set it as default, then use homing. Maybe copy mechanisms from existing projects.
+
+#### 4.9.
+- Few test versions of v0
+- Working version [v0_3](../pySOEM_scripts/v0_3) that accepts commands through UNIX socket
+- TODO:
+    - add chaining
+    - test latency
