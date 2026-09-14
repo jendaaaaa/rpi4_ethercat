@@ -9,4 +9,7 @@ To run any of the script, a custom shell script is used, as described in [raspbe
 
 ## v0
 
-Working test script for controlling 1 drive using commands through Unix socket. Currently only [v0.3](./v0_3/) is working.
+Working test script for controlling one drive using commands through a Unix
+socket: [v0.3](./v0_3/).
+
+Unitree-compatible DDS bridge using dedicated EPOS4 topics: [v0.4](./v0_4/).
