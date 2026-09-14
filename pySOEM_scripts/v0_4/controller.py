@@ -13,7 +13,7 @@ JPVT_MODE = -64
 P_GAIN = 50_000
 I_GAIN = 0
 D_GAIN = 10_000
-POSITION_INCREMENTS_PER_REV = 4096  # HW8A04 documented default (12-bit SSI)
+POSITION_INCREMENTS_PER_REV = 4096  # HW8A01 documented default (12-bit SSI)
 
 
 def log(message):
