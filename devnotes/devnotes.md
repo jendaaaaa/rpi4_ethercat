@@ -64,3 +64,7 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 - TODO:
     - add chaining
     - test latency
+
+#### 15.9.
+- working version v0_3 extended with commanding PID gain values as a preparation for implementing the DDS or the unitree BS
+- adding v0_5 to set target instead of position relative.
