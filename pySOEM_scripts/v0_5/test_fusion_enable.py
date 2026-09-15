@@ -1,15 +1,11 @@
 """Compare joint feedback before/after enabling JPVT with zero command gains."""
 
 import argparse
-from pathlib import Path
 import struct
-import sys
 import time
 
 import pysoem
 
-# Reuse the working version-2 controller; no source files are modified.
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "v0_3"))
 from controller import CYCLE_S, JPVTController, log
 
 
@@ -97,7 +93,11 @@ def poll(controller, phase, duration, started):
     next_print = 0
     while time.monotonic() < deadline:
         cycle_start = time.monotonic()
-        controller.run_cycle()
+        # controller.run_cycle()
+        
+        controlword = 0x0007 if phase == "pre-en" else 0x0000
+        controller.cycle(controlword)
+        
         sw, velocity, filtered, torque = controller.feedback
         if sw & 0x0008:
             raise RuntimeError(f"Drive fault: SW=0x{sw:04X}")
@@ -117,7 +117,7 @@ def poll(controller, phase, duration, started):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("interface", nargs="?", default="eth0")
-    parser.add_argument("--seconds", type=float, default=20,
+    parser.add_argument("--seconds", type=float, default=4,
                         help="enabled observation duration (default: 20 seconds)")
     args = parser.parse_args()
     if not 1 <= args.seconds <= 300:
@@ -128,14 +128,15 @@ def main():
         print("Seconds     Phase     SW       Actual      FusedInc  FilteredInc "
               "   TargetInc  Torque_mNm    VelRaw", flush=True)
         started = time.monotonic()
-        poll(controller, "disabled", 5, started)
-        log("Enabling now with ZERO P/I/D, torque and velocity.")
+        poll(controller, "disabled", 3, started)
+        log("Pre-Enabling now with ZERO P/I/D, torque and velocity...")
         controller.pre_enable()
-        poll(controller, "pre-enabled", args.seconds, started)
+        poll(controller, "pre-en", args.seconds, started)
+        log("> Disabling...")
         controller.disable()
-        poll(controller, "disabled", 5, started)
+        poll(controller, "disabled", 3, started)
     except KeyboardInterrupt:
-        log("Interrupted")
+        log("> Interrupted!")
     finally:
         controller.close()
 
