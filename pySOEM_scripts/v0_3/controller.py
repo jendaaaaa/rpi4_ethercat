@@ -1,4 +1,8 @@
-"""Unix-socket controller for one EPOS4 drive in JPVT mode."""
+"""Unix-socket controller for one EPOS4 drive in JPVT mode.
+
+Commands: enable, reset_position, move_relative, set_velocity, status,
+disable, and quit.
+"""
 
 import json
 import os
@@ -173,6 +177,10 @@ class JPVTController:
         if not -(1 << 31) <= target < (1 << 31):
             raise ValueError("Target exceeds the signed 32-bit range")
         self.target_position = target
+        
+    def reset_position(self):
+        """Make the current measured position the new position target."""
+        self.target_position = round(self.feedback[2] / self.position_scale)
 
     def set_velocity(self, velocity):
         if isinstance(velocity, bool) or not isinstance(velocity, int):
@@ -259,6 +267,12 @@ def handle_command(controller, command):
         return {"type": "result", "command": name, "ok": True}, False
     if name == "move_relative":
         controller.move_relative(command.get("increments"))
+        return {
+            "type": "result", "command": name, "ok": True,
+            "target_inc": controller.target_position,
+        }, False
+    if name == "reset_position":
+        controller.reset_position()
         return {
             "type": "result", "command": name, "ok": True,
             "target_inc": controller.target_position,
