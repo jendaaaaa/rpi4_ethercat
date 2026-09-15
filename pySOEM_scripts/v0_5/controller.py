@@ -18,6 +18,7 @@ P_GAIN = 50_000
 I_GAIN = 0
 D_GAIN = 10_000
 
+JOINT_TORQUE_LIMIT_MNM = 1000
 
 def log(message):
     print(message, file=sys.stderr, flush=True)
@@ -47,6 +48,17 @@ class JPVTController:
         self.master.write_state()
         if self.drive.state_check(pysoem.PREOP_STATE, 50_000) != pysoem.PREOP_STATE:
             raise RuntimeError("Drive did not reach PREOP")
+        
+        # --------------------------------------------------------
+        # torque limit
+        write_u32(self.drive, 0x34C6, 4, JOINT_TORQUE_LIMIT_MNM)
+
+        actual_limit = read_u32(self.drive, 0x34C6, 4)
+        if actual_limit != JOINT_TORQUE_LIMIT_MNM:
+            raise RuntimeError(f"Torque limit not accepted: {actual_limit}")
+
+        log(f"Joint torque limit: {actual_limit} mNm")
+        # --------------------------------------------------------
 
         self._reset_fault_if_needed()
         self._configure_jpvt()
@@ -176,6 +188,14 @@ class JPVTController:
             (0x000F, 0x0027),
         ):
             self._set_controlword(controlword, expected_state)
+            
+    def pre_enable(self):
+        for controlword, expected_state in (
+            (0x0006, 0x0021),
+            (0x0007, 0x0023),
+        ):
+            self._set_controlword(controlword, expected_state)
+        self.target_position = round(self.feedback[2] / self.position_scale)
 
     def disable(self):
         self._set_controlword(0x0006, 0x0021)
@@ -277,6 +297,9 @@ def handle_command(controller, command):
     name = command.get("command")
     if name == "status":
         return controller.status(), False
+    # if name == "init":
+    #     controller.initialize_encoder()
+    #     return {"type": "result", "command": name, "ok": True}, False
     if name == "enable":
         controller.enable()
         return {"type": "result", "command": name, "ok": True}, False

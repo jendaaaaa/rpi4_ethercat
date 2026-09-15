@@ -31,6 +31,7 @@ def parse_arguments():
     commands.add_parser("status")
     commands.add_parser("disable")
     commands.add_parser("quit")
+    commands.add_parser("init")
 
     move = commands.add_parser("move-relative")
     move.add_argument("increments", type=int)

@@ -10,7 +10,7 @@ import pysoem
 
 # Reuse the working version-2 controller; no source files are modified.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "v0_3"))
-from controller_2 import CYCLE_S, JPVTController, log
+from controller import CYCLE_S, JPVTController, log
 
 
 class FusionTestController(JPVTController):
@@ -130,8 +130,8 @@ def main():
         started = time.monotonic()
         poll(controller, "disabled", 5, started)
         log("Enabling now with ZERO P/I/D, torque and velocity.")
-        controller.enable()
-        poll(controller, "enabled", args.seconds, started)
+        controller.pre_enable()
+        poll(controller, "pre-enabled", args.seconds, started)
         controller.disable()
         poll(controller, "disabled", 5, started)
     except KeyboardInterrupt:
