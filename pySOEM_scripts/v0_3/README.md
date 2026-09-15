@@ -1,100 +1,111 @@
-# JPVT Socket Controller
+# v0_3: JPVT socket controllers
 
-This pair of scripts keeps one EtherCAT controller process running and lets
-other local processes send commands through a Unix socket.
+This folder contains two versions of a local controller for one EPOS4/HEJ
+joint in JPVT mode. Start one controller on the Raspberry Pi, then use its
+client from another terminal or Python script on the same machine.
 
-## Files
+| Pair | Gain handling | EtherCAT PDO sizes |
+| --- | --- | --- |
+| `controller.py` + `client.py` | P, I and D are configured once at startup through SDO | Rx: 10 bytes; Tx: 10 bytes |
+| `controller_2.py` + `client_2.py` | Optional P and D values on relative moves; stored P, I and D are sent every cycle through PDO | Rx: 26 bytes; Tx: 14 bytes |
 
-- `jpvt_json_process.py` owns the EtherCAT interface and runs the 2 ms PDO loop.
-- `jpvt_client.py` connects to the controller, sends one command, prints the
-  response, and disconnects.
+Both use a Unix socket at `/tmp/jpvt.sock`. Run only one controller at a time:
+these versions share both the socket path and the EtherCAT interface. This
+communication is local to the Raspberry Pi; it does not use DDS or a network
+socket.
 
-The controller listens on:
+## Common behavior
 
-```text
-/tmp/jpvt.sock
-```
+Both controllers use PySOEM, the first discovered slave on `eth0`, JPVT mode
+`-64`, and a requested EtherCAT cycle period of 2 ms. The Python loop sleeps
+for the remaining time after each cycle; 2 ms is a requested period rather
+than a guaranteed deadline.
 
-Run only one controller process. Multiple client invocations can connect to it
-one at a time.
+At startup, the controller:
 
-## Start the controller
+1. Finds the drive and enters EtherCAT PREOP.
+2. Writes controlword zero and resets a startup fault only if the Fault bit is set.
+3. Selects JPVT mode and writes the default gains, zero target torque and zero target velocity.
+4. Reads the position units and initializes the target from the measured position.
+5. Sets the anti-alias cutoff to 250 Hz and interpolation period to 2 ms.
+6. Configures PDOs, enters EtherCAT OP, and starts the socket server with drive power disabled.
 
-From the directory containing both scripts:
+EtherCAT OP means process data can be exchanged. Drive operation is enabled
+separately using the `enable` command.
 
-```bash
-run_realtime jpvt_json_process.py
-```
+Both versions support these commands:
 
-Leave this terminal running. Setup and error messages are written to stderr.
+| Command | Behavior |
+| --- | --- |
+| `status` | Returns the latest feedback and stored targets as JSON |
+| `enable` | Captures the measured position as the target, then runs the CiA 402 enable sequence |
+| `move-relative N` | Sets a target equal to the latest measured position plus `N` whole increments; requires the drive to be enabled |
+| `set-velocity N` | Stores an integer target velocity; zero selects no velocity feedforward |
+| `disable` | Disables the drive and keeps the server running |
+| `quit` | Replies, then attempts to disable the drive and closes the controller |
 
-To save the controller log:
+A relative move is a position step, with no ramp. It uses the measured
+position at command handling time, not the previous target. It does not zero
+the encoder or rewrite its origin.
 
-```bash
-run_realtime jpvt_json_process.py 2>jpvt.log
-```
+Position targets must use increments (`0x60A8 = 0x00B50000`). Feedback can be
+increments or milli-increments; the controller reads `0x34C6:0D` and divides
+milli-increment feedback by 1000 before calculating a target. No conversion
+to radians is performed.
 
-To display and save it:
+Velocity commands are passed directly to `0x60FF` without conversion. In the
+HEJ configuration used here, these values are milli-rpm: `10000` means
+10 rpm. The scripts do not read or validate the velocity unit setting.
 
-```bash
-run_realtime jpvt_json_process.py 2> >(tee -a jpvt.log >&2)
-```
+Targets remain stored between client commands and are sent every EtherCAT
+cycle. Clients send one command, read one response, and disconnect; they do
+not need to send a heartbeat. There is no client-command timeout. `disable`
+does not clear the stored target velocity, so set velocity to zero before
+enabling if position-only control is intended.
 
-## Send commands
+## Original pair: controller.py and client.py
 
-Use another terminal in the same directory.
-
-Read the current state:
-
-```bash
-python3 jpvt_client.py status
-```
-
-Enable the drive. The controller captures the measured position and uses it as
-the initial target before enabling:
-
-```bash
-python3 jpvt_client.py enable
-```
-
-Move relative to the measured position, in whole increments:
-
-```bash
-python3 jpvt_client.py move-relative 300
-python3 jpvt_client.py move-relative -300
-```
-
-Set target velocity:
-
-```bash
-python3 jpvt_client.py set-velocity 10000
-python3 jpvt_client.py set-velocity 0
-```
-
-Disable the drive while leaving the controller process running:
+Start the controller from this folder:
 
 ```bash
-python3 jpvt_client.py disable
+run_realtime controller.py
 ```
 
-Disable, close EtherCAT, and stop the controller process:
+Leave that terminal running. From another terminal:
 
 ```bash
-python3 jpvt_client.py quit
+python3 client.py status
+python3 client.py set-velocity 0
+python3 client.py enable
+python3 client.py move-relative 300
+python3 client.py move-relative -300
+python3 client.py status
+python3 client.py disable
+python3 client.py quit
 ```
 
-## Typical position-control session
+`run_realtime` is the existing launcher used on the Raspberry Pi. PySOEM must
+be installed in the Python environment used by that launcher.
 
-```bash
-python3 jpvt_client.py status
-python3 jpvt_client.py set-velocity 0
-python3 jpvt_client.py enable
-python3 jpvt_client.py move-relative 300
-python3 jpvt_client.py status
-python3 jpvt_client.py disable
+The gains are the constants at the top of `controller.py`:
+
+```python
+P_GAIN = 50_000
+I_GAIN = 0
+D_GAIN = 10_000
 ```
 
-## Status response
+These constants are already in HEJ integer units. P is mNm/rad and D is
+mNm·s/rad, so these defaults correspond to P = 50 Nm/rad and D = 10 Nm·s/rad.
+The client cannot override them. Change the constants and restart the
+controller to use other defaults.
+
+The RxPDO contains controlword, target velocity and target position. The
+TxPDO contains statusword, filtered velocity and filtered position. Torque
+is cleared through SDO at startup; gains are also written through SDO at
+startup rather than transmitted in each PDO.
+
+Example `status` response:
 
 ```json
 {
@@ -109,43 +120,165 @@ python3 jpvt_client.py disable
 }
 ```
 
-`position_inc` and `target_inc` are in position increments. `target_velocity`
-is the requested value, while `velocity_raw` is the feedback value received
-from the drive.
+## Extended pair: controller_2.py and client_2.py
 
-## Use from Python
+Start the extended controller instead of the original:
 
-Other Python programs can import the client function:
-
-```python
-from jpvt_client import send_command
-
-print(send_command({"command": "status"}))
-print(send_command({"command": "enable"}))
-print(send_command({"command": "move_relative", "increments": 300}))
-print(send_command({"command": "set_velocity", "velocity": 0}))
-print(send_command({"command": "disable"}))
+```bash
+run_realtime controller_2.py
 ```
 
-Each `send_command()` call opens one socket connection, waits for one response,
-and closes the connection.
+Use the matching client:
 
-## Controller parameters
+```bash
+python3 client_2.py status
+python3 client_2.py set-velocity 0
+python3 client_2.py enable
+python3 client_2.py move-relative 300 kp 40 kd 1
+python3 client_2.py status
+python3 client_2.py disable
+python3 client_2.py quit
+```
 
-The controller parameters are near the top of `jpvt_json_process.py`:
+The extended client adds optional `kp VALUE` and `kd VALUE` pairs to
+`move-relative`. Either can appear first:
+
+```bash
+python3 client_2.py move-relative 300
+python3 client_2.py move-relative 300 kp 40
+python3 client_2.py move-relative 300 kd 1
+python3 client_2.py move-relative 300 kd 1 kp 40
+python3 client_2.py move-relative -300 kp 0.1 kd 1
+```
+
+Command values use SI units. The controller converts them to the HEJ's
+unsigned 32-bit integer gains using `round(value * 1000)`:
+
+| Parameter | Client unit | HEJ unit | Example |
+| --- | --- | --- | --- |
+| `kp` | Nm/rad | mNm/rad | `kp 40` becomes `40000` |
+| `kd` | Nm·s/rad | mNm·s/rad | `kd 1` becomes `1000` |
+
+Decimal command values are accepted; for example, `kp 0.1` becomes `100`.
+The stored HEJ value has integer resolution. Negative, non-finite or
+out-of-range gain values are rejected.
+
+**Every relative-move command restores any omitted gain to its default.**
+It does not keep an override from the previous move:
+
+```bash
+python3 client_2.py move-relative 300 kp 40 kd 1
+# P=40000, D=1000 in HEJ units
+
+python3 client_2.py move-relative 300 kp 40
+# P=40000, D=D_GAIN (10000)
+
+python3 client_2.py move-relative 300
+# P=P_GAIN (50000), D=D_GAIN (10000)
+```
+
+The defaults are the constants in `controller_2.py`, in HEJ integer units:
 
 ```python
-CYCLE_S = 0.002
 P_GAIN = 50_000
 I_GAIN = 0
 D_GAIN = 10_000
 ```
 
-Target velocity starts at zero and is changed with the `set_velocity` command.
+I remains at `I_GAIN`; there is no `ki` command. The optional gain arguments
+are supported only by `move-relative`, not by `enable` or `set-velocity`.
+Other commands do not change the stored gains.
 
-## Stopping after an interruption
+Each RxPDO sends the latest stored values in this order:
 
-The controller runs its disable sequence when it receives `quit`, when Ctrl-C
-is pressed, or when it detects a fatal error. If the process terminates without
-cleaning up, `/tmp/jpvt.sock` may remain. The next controller start removes the
-old socket path before listening.
+```text
+controlword, target velocity, target position, target torque, P, I, D
+```
+
+The gains do not need to change every cycle: the controller repeatedly sends
+their stored values, even when no client is connected. Target torque is zero
+by default and has no client command in this version.
+
+Each TxPDO returns:
+
+```text
+statusword, filtered velocity, filtered position, filtered estimated joint torque
+```
+
+The extended PDO mapping must be supported by the drive firmware. Startup
+validates a 26-byte RxPDO and a 14-byte TxPDO.
+
+The extended status response adds these fields to the original response:
+
+```json
+{
+  "torque_mNm": 0,
+  "kp_mNm_per_rad": 40000,
+  "kd_mNm_s_per_rad": 1000
+}
+```
+
+These are additional fields, not a complete response. The gain fields report
+the controller's stored command values; they are not separate SDO readbacks
+from the drive. The relative-move result also reports the target and the
+stored P and D gains.
+
+## Sending commands from another Python script
+
+Import the client corresponding to the running controller:
+
+```python
+from client import send_command
+
+print(send_command({"command": "status"}))
+print(send_command({"command": "set_velocity", "velocity": 0}))
+print(send_command({"command": "enable"}))
+print(send_command({"command": "move_relative", "increments": 300}))
+print(send_command({"command": "disable"}))
+```
+
+For the extended version:
+
+```python
+from client_2 import send_command
+
+print(send_command({"command": "status"}))
+print(send_command({"command": "set_velocity", "velocity": 0}))
+print(send_command({"command": "enable"}))
+print(send_command({
+    "command": "move_relative",
+    "increments": 300,
+    "kp": 40.0,
+    "kd": 1.0,
+}))
+print(send_command({"command": "disable"}))
+```
+
+The wire format is newline-terminated JSON. Python/JSON command names use
+underscores (`move_relative`, `set_velocity`); the command-line clients use
+hyphens (`move-relative`, `set-velocity`). An invalid command returns a result
+with `"ok": false` and an `"error"` description. Normal command results contain
+`"ok": true`; `status` returns a status object directly.
+
+## Logs and shutdown
+
+Controller setup, errors and shutdown messages go to stderr. Client JSON
+responses go to stdout. No log file is created automatically.
+
+Save the extended controller log:
+
+```bash
+run_realtime controller_2.py 2>jpvt.log
+```
+
+For the original version, substitute `controller.py`.
+
+Both controllers attempt the drive disable sequence on `quit`, Ctrl-C or a
+fatal error, then request EtherCAT INIT and close the master. A drive fault,
+non-positive receive WKC or unexpected feedback size causes a fatal error.
+Shutdown can fail if EtherCAT communication is already lost; failures are
+logged as shutdown warnings.
+
+The socket is removed during normal cleanup. If it remains after an abrupt
+termination, the next controller start removes the old socket path before
+listening. Stop the previous controller before starting either version.
