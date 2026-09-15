@@ -20,6 +20,7 @@ class FusionTestController(JPVTController):
         self.kp = self.ki = self.kd = 0
         self.target_velocity = self.target_torque = 0
         self.extra_feedback = (0, 0)
+        self.require_full_wkc = False
 
     def _configure_pdos(self):
         super()._configure_pdos()
@@ -63,7 +64,12 @@ class FusionTestController(JPVTController):
             time.sleep(CYCLE_S)
         self.master.read_state()
         if self.drive.state != pysoem.OP_STATE:
-            raise RuntimeError("Drive did not reach OP")
+            raise RuntimeError(
+                f"Drive did not reach OP: state=0x{self.drive.state:02X}, "
+                f"AL status=0x{self.drive.al_status:04X}"
+            )
+        self.require_full_wkc = True
+        self.cycle(0x0000)
         log("Ready: P=I=D=0, velocity=torque=0. Test never restores nonzero gains.")
 
     def cycle(self, controlword):
@@ -72,7 +78,9 @@ class FusionTestController(JPVTController):
         )
         self.master.send_processdata()
         wkc = self.master.receive_processdata()
-        if wkc != self.master.expected_wkc:
+        # SAFEOP may return input data without accepting output data yet.
+        # Require complete exchange only after OP has been confirmed.
+        if wkc <= 0 or (self.require_full_wkc and wkc != self.master.expected_wkc):
             raise RuntimeError(f"WKC={wkc}, expected {self.master.expected_wkc}")
         if len(self.drive.input) != 22:
             raise RuntimeError("Expected 22 input bytes")
