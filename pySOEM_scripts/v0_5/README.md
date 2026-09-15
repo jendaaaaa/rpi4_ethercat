@@ -82,3 +82,55 @@ run_realtime read_positions.py 2>&1 | tee positions.log
 For comparing power cycles, stop the script, remove power, move the joint,
 restore power, then start the script again. This keeps discovery explicit and
 the drive unenabled throughout the diagnostic procedure.
+
+## Zero-gain enable test
+
+`test_fusion_enable.py` checks whether the sensor-fusion readings start
+updating when the drive is enabled. It imports the working controller class
+from `../v0_3/controller_2.py`; leave that file in place.
+
+Stop every other EtherCAT controller/reader first, then run:
+
+```bash
+run_realtime test_fusion_enable.py
+```
+
+The test performs:
+
+1. Startup configuration with P, I, D, target velocity and target torque zero.
+2. Five seconds of disabled observation.
+3. Enable with those values still zero; observe for 20 seconds.
+4. Disable and observe for another five seconds, then close.
+
+Ctrl-C exits early and attempts the inherited shutdown sequence. To observe
+longer, use your PySOEM Python environment:
+
+```bash
+sudo /path/to/.venv/bin/python3 test_fusion_enable.py eth0 --seconds 60
+```
+
+This script intentionally enables the power stage. Zero JPVT command gains
+are not STO and do not rule out firmware initialization or other compensation
+behavior. Keep the joint clear and stop the test if unexpected movement occurs.
+It never applies your normal nonzero gains or commands a relative move.
+
+The test maps actual, fused and filtered position into one 22-byte TxPDO and
+keeps the version-2 26-byte RxPDO. No mailbox reads interrupt the observation
+loop. Raw SSI is not PDO-mappable according to the docs, so it is not included;
+use `read_positions.py` separately for that reading. A mapping rejection
+aborts setup before the test's enable step.
+
+`Actual` is the raw drive position in its configured position units.
+`FusedInc` and `FilteredInc` are converted to increments using the drive's
+reported fusion scale. `TargetInc` is the captured target; velocity is raw
+feedback and torque is estimated joint torque in mNm.
+
+Move the joint slightly by hand during the observation phases, if appropriate
+for your setup. Check whether fused and filtered position follow actual
+position during the enabled phase and whether they stop updating after
+disabling. Simply seeing a constant value while the joint is stationary does
+not prove the fusion is frozen.
+
+```bash
+run_realtime test_fusion_enable.py 2>&1 | tee fusion-enable.log
+```
