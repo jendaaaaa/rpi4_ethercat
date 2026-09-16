@@ -353,6 +353,26 @@ class JPVTController:
         self.kp = gain_to_hej(kp, P_GAIN, "kp")
         self.kd = gain_to_hej(kd, D_GAIN, "kd")
         self.target_position = target
+        
+    def move_target(self, q, dq: int = 0, kp = None, kd = None):
+        if self.state() != STATE.OPERATION_ENABLED:
+            raise ValueError("[EPOS] Drive must be enabled before moving")
+        if isinstance(q, bool) or not isinstance(q, int):
+            raise ValueError("Increments [q] must be a whole number")
+        if isinstance(dq, bool) or not isinstance(dq, int):
+            raise ValueError("velocity must be a whole number")
+        if not -(1 << 31) <= dq < (1 << 31):
+            raise ValueError("velocity exceeds the signed 32-bit range")
+        if not -(1 << 31) <= q < (1 << 31):
+            raise ValueError("Target exceeds the signed 32-bit range")
+        kp = gain_to_hej(kp, P_GAIN, "kp")
+        kd = gain_to_hej(kd, D_GAIN, "kd")
+        log(f"q = {q}, dq = {dq}, kp = {kp}")
+        return
+        self.kp = kp
+        self.kd = kd
+        self.target_position = q
+        self.target_velocity = dq
 
     def state(self):
         statusword = self.feedback[0]

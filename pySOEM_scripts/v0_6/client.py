@@ -31,7 +31,13 @@ def parse_arguments():
     commands.add_parser("status")
     commands.add_parser("disable")
     commands.add_parser("quit")
+    
     commands.add_parser("init")
+    
+    target = commands.add_parser("move-target")
+    target.add_argument("q", type=int)
+    target.add_argument("dq", type=int)
+    target.add_argument("gains", nargs="*", metavar="GAIN VALUE")
 
     move = commands.add_parser("move-relative")
     move.add_argument("increments", type=int)
@@ -51,6 +57,20 @@ def main():
     command = {"command": args.command.replace("-", "_")}
     if args.command == "move-relative":
         command["increments"] = args.increments
+        if len(args.gains) % 2:
+            parser.error("gain parameters must be pairs, for example: kp 40 kd 1")
+        for name, value in zip(args.gains[::2], args.gains[1::2]):
+            if name not in ("kp", "kd"):
+                parser.error(f"unknown gain {name!r}; use kp or kd")
+            if name in command:
+                parser.error(f"{name} was specified more than once")
+            try:
+                command[name] = float(value)
+            except ValueError:
+                parser.error(f"{name} must be a number")
+    elif args.command == "move-target":
+        command["q"] = args.q
+        command["dq"] = args.dq
         if len(args.gains) % 2:
             parser.error("gain parameters must be pairs, for example: kp 40 kd 1")
         for name, value in zip(args.gains[::2], args.gains[1::2]):
