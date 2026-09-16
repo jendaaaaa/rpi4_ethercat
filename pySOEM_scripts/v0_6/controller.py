@@ -15,9 +15,9 @@ INTERFACE = "eth0"
 SOCKET_PATH = "/tmp/jpvt.sock"
 
 CYCLE_S = 0.002
-P_GAIN = 50_000
+P_GAIN = 40_000
 I_GAIN = 0
-D_GAIN = 10_000
+D_GAIN = 1_000
 JOINT_TORQUE_LIMIT_MNM = 1000
 JPVT_MODE = -64
 
@@ -97,7 +97,7 @@ class TX_MAPPING(IntEnum):
     FILTERED_JOINT_TORQUE   = 0x36770020
 
 # EPOS State
-class STATE(IntEnum):
+class EPOS_STATE(IntEnum):
     MASK_STATE          = 0b01101111
     MASK_FAULT          = 0b00001000
     
@@ -105,6 +105,15 @@ class STATE(IntEnum):
     READY_TO_SWITCH_ON  = 0b00100001    # 0x21    
     SWITCHED_ON         = 0b00100011    # 0x23
     OPERATION_ENABLED   = 0b00100111    # 0x27
+    
+class MAIN_STATE(IntEnum):
+    FAULT               = -1
+    DEAD                = 0
+    POWERED             = 1
+    INITIALIZED         = 2
+    SENSING_POSITION    = 3
+    DEVELOPER           = 4
+    DAMPING             = 5
 
 # ControlWord
 class CW(IntEnum):
@@ -129,8 +138,10 @@ class JPVTController:
         self.ki = 0
         self.kd = 0
         self.feedback = (0, 0, 0, 0)
+        self.state = MAIN_STATE.DEAD
     
     def configure(self) -> None:
+        self.state = MAIN_STATE.POWERED
         if self.master.config_init() <= 0:
             raise RuntimeError("[EtherCat] No EtherCAT slaves found!")
         
@@ -150,13 +161,13 @@ class JPVTController:
         # RESET FAULT
         statusword = self.get_sdo(SDO.STATUSWORD)
         self.set_sdo(SDO.CONTROLWORD, CW.FAULT_RESET_0)
-        if statusword & STATE.MASK_FAULT:
+        if statusword & EPOS_STATE.MASK_FAULT:
             log(f"[EPOS] Resetting startup fault: SW=0x{statusword:04X}")
             self.set_sdo(SDO.CONTROLWORD, CW.FAULT_RESET_1)
             time.sleep(0.2)
             self.set_sdo(SDO.CONTROLWORD, CW.FAULT_RESET_0)
             time.sleep(0.2)
-            if self.get_sdo(SDO.CONTROLWORD) & STATE.MASK_FAULT:
+            if self.get_sdo(SDO.CONTROLWORD) & EPOS_STATE.MASK_FAULT:
                 raise RuntimeError("[EPOS] Startup fault did not clear!")
         else:
             log(f"[EPOS] Startup fault clear")
@@ -278,6 +289,7 @@ class JPVTController:
             raise RuntimeError("[EtherCat] Master did not reach OP")
         
         log(f"[EtherCat] State: OP")
+        self.state = MAIN_STATE.INITIALIZED
 
     def set_sdo(self, parameter: SDO, value):
         p = parameter.value
@@ -314,14 +326,14 @@ class JPVTController:
         self.feedback = struct.unpack("<Hiii", self.drive.input)
         return self.feedback
     
-    def _set_cw(self, controlword: CW, expected_state: STATE):
+    def _set_cw(self, controlword: CW, expected_state: EPOS_STATE):
         deadline = time.monotonic() + 1.0
         while True:
             self.cycle(controlword)
             statusword = self.feedback[0]
-            if statusword & STATE.MASK_FAULT:
+            if statusword & EPOS_STATE.MASK_FAULT:
                 raise RuntimeError(f"[EPOS] fault: SW=0x{statusword:04X}")
-            if (statusword & STATE.MASK_STATE) == expected_state:
+            if (statusword & EPOS_STATE.MASK_STATE) == expected_state:
                 return
             if time.monotonic() >= deadline:
                 raise RuntimeError(
@@ -332,30 +344,21 @@ class JPVTController:
 
     def enable(self):
         self.target_position = self.current_position()
-        self._set_cw(CW.SHUTDOWN, STATE.READY_TO_SWITCH_ON)
-        self._set_cw(CW.SWITCH_ON, STATE.SWITCHED_ON)
-        self._set_cw(CW.ENABLE_OPERATION, STATE.OPERATION_ENABLED)
+        self.target_velocity = 0
+        self.target_joint_torque = 0
+        self.kp = 0
+        self.ki = 0
+        self.kd = 0
+        self._set_cw(CW.SHUTDOWN, EPOS_STATE.READY_TO_SWITCH_ON)
+        self._set_cw(CW.SWITCH_ON, EPOS_STATE.SWITCHED_ON)
+        self._set_cw(CW.ENABLE_OPERATION, EPOS_STATE.OPERATION_ENABLED)
 
     def disable(self):
-        self._set_cw(CW.SHUTDOWN, STATE.READY_TO_SWITCH_ON)
-        self._set_cw(CW.DISABLE_VOLTAGE, STATE.SWITCH_ON_DISABLED)
-
-    def move_relative(self, increments, kp=None, kd=None):
-        if self.state() != STATE.OPERATION_ENABLED:
-            raise ValueError("[EPOS] Drive must be enabled before moving")
-        if isinstance(increments, bool) or not isinstance(increments, int):
-            raise ValueError("Increments must be a whole number")
-        
-        current_position = self.current_position()
-        target = current_position + increments
-        if not -(1 << 31) <= target < (1 << 31):
-            raise ValueError("Target exceeds the signed 32-bit range")
-        self.kp = gain_to_hej(kp, P_GAIN, "kp")
-        self.kd = gain_to_hej(kd, D_GAIN, "kd")
-        self.target_position = target
+        self._set_cw(CW.SHUTDOWN, EPOS_STATE.READY_TO_SWITCH_ON)
+        self._set_cw(CW.DISABLE_VOLTAGE, EPOS_STATE.SWITCH_ON_DISABLED)
         
     def move_target(self, q, dq: int = 0, kp = None, kd = None):
-        if self.state() != STATE.OPERATION_ENABLED:
+        if self.epos_state() != EPOS_STATE.OPERATION_ENABLED:
             raise ValueError("[EPOS] Drive must be enabled before moving")
         if isinstance(q, bool) or not isinstance(q, int):
             raise ValueError("Increments [q] must be a whole number")
@@ -367,33 +370,32 @@ class JPVTController:
             raise ValueError("Target exceeds the signed 32-bit range")
         kp = gain_to_hej(kp, P_GAIN, "kp")
         kd = gain_to_hej(kd, D_GAIN, "kd")
-        log(f"q = {q}, dq = {dq}, kp = {kp}")
-        return
+        log(f"q = {q}, dq = {dq}, kp = {kp}, kd = {kd}")
         self.kp = kp
         self.kd = kd
         self.target_position = q
         self.target_velocity = dq
 
-    def state(self):
+    def epos_state(self):
         statusword = self.feedback[0]
-        if statusword & STATE.MASK_FAULT:
-            return STATE.MASK_FAULT
-        current_state = statusword & STATE.MASK_STATE
-        if current_state not in STATE:
+        if statusword & EPOS_STATE.MASK_FAULT:
+            return EPOS_STATE.MASK_FAULT
+        current_state = statusword & EPOS_STATE.MASK_STATE
+        if current_state not in EPOS_STATE:
             return None
         return current_state
     
-    def state_name(self):
-        current_state = self.state()
+    def epos_state_name(self):
+        current_state = self.epos_state()
         if current_state is None:
             return "UNKNOWN"
-        return STATE(current_state).name
+        return EPOS_STATE(current_state).name
 
     def status(self):
         statusword, velocity, position, torque = self.feedback
         return {
             "type": "status",
-            "state": self.state_name(),
+            "state": self.epos_state_name(),
             "statusword": f"0x{statusword:04X}",
             "position_inc": position / self.position_scale,
             "target_inc": self.target_position,
@@ -402,7 +404,7 @@ class JPVTController:
             "torque_mNm": torque,
             "kp_mNm_per_rad": self.kp,
             "kd_mNm_s_per_rad": self.kd,
-            "fault": bool(statusword & STATE.MASK_FAULT),
+            "fault": bool(statusword & EPOS_STATE.MASK_FAULT),
         }
 
     def close(self):
@@ -432,13 +434,14 @@ def handle_command(controller, command):
     if name == "enable":
         controller.enable()
         return {"type": "result", "command": name, "ok": True}, False
-    if name == "move_relative":
-        controller.move_relative(
-            command.get("increments"), command.get("kp"), command.get("kd")
+    if name == "move":
+        controller.move_target(
+            command.get("q"), command.get("dq"), command.get("kp"), command.get("kd")
         )
         return {
             "type": "result", "command": name, "ok": True,
-            "target_inc": controller.target_position,
+            "target_q": controller.target_position,
+            "target_dq": controller.target_velocity,
             "kp_mNm_per_rad": controller.kp,
             "kd_mNm_s_per_rad": controller.kd,
         }, False
@@ -505,11 +508,15 @@ def run_server(controller):
         while not quitting:
             cycle_start = time.monotonic()
             
-            state = controller.state()
-            if state == STATE.OPERATION_ENABLED:
+            # EPOS state
+            epos_state = controller.epos_state()
+            if epos_state == EPOS_STATE.OPERATION_ENABLED:
                 cw = CW.ENABLE_OPERATION
             else:
                 cw = CW.DISABLE_VOLTAGE
+                
+            # MAIN state
+            
             
             controller.cycle(cw)
             
@@ -525,7 +532,7 @@ def run_server(controller):
                 reply(client, response)
                 client = None
                 client_data = bytearray()
-            if controller.state() == "fault":
+            if controller.epos_state() == EPOS_STATE.MASK_FAULT:
                 raise RuntimeError(f"[EPOS] Drive fault: SW=0x{controller.feedback[0]:04X}")
             remaining = CYCLE_S - (time.monotonic() - cycle_start)
             if remaining > 0:
