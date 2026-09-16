@@ -360,21 +360,33 @@ class JPVTController:
     def move_target(self, q, dq: int = 0, kp = None, kd = None):
         if self.epos_state() != EPOS_STATE.OPERATION_ENABLED:
             raise ValueError("[EPOS] Drive must be enabled before moving")
-        if isinstance(q, bool) or not isinstance(q, int):
-            raise ValueError("Increments [q] must be a whole number")
-        if isinstance(dq, bool) or not isinstance(dq, int):
-            raise ValueError("velocity must be a whole number")
-        if not -(1 << 31) <= dq < (1 << 31):
-            raise ValueError("velocity exceeds the signed 32-bit range")
-        if not -(1 << 31) <= q < (1 << 31):
-            raise ValueError("Target exceeds the signed 32-bit range")
-        kp = gain_to_hej(kp, P_GAIN, "kp")
-        kd = gain_to_hej(kd, D_GAIN, "kd")
+        if not (self._valid_target(q) and self._valid_target(dq)):
+            raise ValueError("[Main] Skipped move command")
+        kp = self._norm_gain(kp, P_GAIN, "kp")
+        kd = self._norm_gain(kd, D_GAIN, "kd")
         log(f"q = {q}, dq = {dq}, kp = {kp}, kd = {kd}")
         self.kp = kp
         self.kd = kd
         self.target_position = q
         self.target_velocity = dq
+
+    def _valid_target(self, value, name) -> bool:
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(f"[Main] Value of {name} must be a whole number")
+        if not -(1 << 31) <= value < (1 << 31):
+            raise ValueError(f"[Main] Value of {name} exceeds the signed 32-bit range")
+
+    def _norm_gain(self, value, default, name):
+        if value is None:
+            value = default
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(f"[Main] {name} must be a number")
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"[Main] {name} must be a finite, non-negative number")
+        converted = round(value * 1000)
+        if converted > 0xFFFFFFFF:
+            raise ValueError(f"[Main] {name} exceeds the unsigned 32-bit range")
+        return converted
 
     def epos_state(self):
         statusword = self.feedback[0]
@@ -556,18 +568,6 @@ def main():
         if os.path.exists(SOCKET_PATH):
             os.unlink(SOCKET_PATH)
         controller.close()
-
-def gain_to_hej(value, default, name):
-    if value is None:
-        return default
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(f"{name} must be a number")
-    if not math.isfinite(value) or value < 0:
-        raise ValueError(f"{name} must be a finite, non-negative number")
-    converted = round(value * 1000)
-    if converted > 0xFFFFFFFF:
-        raise ValueError(f"{name} exceeds the unsigned 32-bit range")
-    return converted
 
 if __name__ == "__main__":
     main()
