@@ -624,29 +624,22 @@ def run_server(controller: JPVTController):
                 elif state == MAIN_STATE.SENSING_POSITION:
                     counter += 1
                     if counter > 1_000:
-                        # log(f"SENSING_POSITION done, going to DEVELOPER")
                         controller.move_state(MAIN_STATE.DEVELOPER)
                         counter = 0
                 
                 elif state == MAIN_STATE.DEVELOPER:
-                    # counter += 1
-                    # if counter % 1_000:
-                        # log(f"{controller.target_position}, {controller.feedback[2] / controller.position_scale}")
                         
                     # get to zero position slowly
                     if controller.zero_reached():
                         counter += 1
-                        if counter > 1_000:
-                            log(f"kp = {controller.kp}, ki = {controller.ki}, kd = {controller.kd}")
+                        if counter > 500:
                             controller.move_state(MAIN_STATE.DAMPING)
                     else:
                         counter = 0
                         
                 elif state == MAIN_STATE.DAMPING:
-                    controller.move_state(MAIN_STATE.DAMPING)
-                    
-                    # # do whatever
-                    # pass
+                    # do whatever
+                    pass
                 
                 else:
                     controller.move_state(MAIN_STATE.INITIALIZED)
