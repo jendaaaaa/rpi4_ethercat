@@ -15,9 +15,17 @@ INTERFACE = "eth0"
 SOCKET_PATH = "/tmp/jpvt.sock"
 
 CYCLE_S = 0.002
+
 P_GAIN = 40_000
 I_GAIN = 0
 D_GAIN = 1_000
+
+P_GAIN_HOMING = 40_000
+I_GAIN_HOMING = 0
+D_GAIN_HOMING = 1_000
+
+ZERO_MARGIN = 5
+
 JOINT_TORQUE_LIMIT_MNM = 1000
 JPVT_MODE = -64
 
@@ -358,13 +366,17 @@ class JPVTController:
         self._set_cw(CW.DISABLE_VOLTAGE, EPOS_STATE.SWITCH_ON_DISABLED)
         
     def move_target(self, q, dq: int = 0, kp = None, kd = None):
-        if self.epos_state() != EPOS_STATE.OPERATION_ENABLED:
+        if self.get_epos_state() != EPOS_STATE.OPERATION_ENABLED:
             raise ValueError("[EPOS] Drive must be enabled before moving")
+        if self.get_main_state() != MAIN_STATE.DAMPING:
+            raise ValueError("[Main] Main must be in DAMPING mode before moving")
         if not (self._valid_target(q) and self._valid_target(dq)):
             raise ValueError("[Main] Skipped move command")
+        
         kp = self._norm_gain(kp, P_GAIN, "kp")
         kd = self._norm_gain(kd, D_GAIN, "kd")
         log(f"q = {q}, dq = {dq}, kp = {kp}, kd = {kd}")
+        
         self.kp = kp
         self.kd = kd
         self.target_position = q
@@ -388,7 +400,7 @@ class JPVTController:
             raise ValueError(f"[Main] {name} exceeds the unsigned 32-bit range")
         return converted
 
-    def epos_state(self):
+    def get_epos_state(self):
         statusword = self.feedback[0]
         if statusword & EPOS_STATE.MASK_FAULT:
             return EPOS_STATE.MASK_FAULT
@@ -397,25 +409,86 @@ class JPVTController:
             return None
         return current_state
     
-    def epos_state_name(self):
-        current_state = self.epos_state()
+    def get_epos_state_name(self):
+        current_state = self.get_epos_state()
         if current_state is None:
             return "UNKNOWN"
         return EPOS_STATE(current_state).name
+    
+    def get_main_state(self):
+        return self.state
+    
+    def get_main_state_name(self):
+        return MAIN_STATE(self.state).name
+    
+    def prepare_state(self, state: MAIN_STATE) -> None:
+        if state not in MAIN_STATE:
+            raise ValueError(f"[Main] {state} invalid state value!")
+        self.state = state
+        
+        if state == MAIN_STATE.INITIALIZED:
+            self.kp = 0
+            self.ki = 0
+            self.kd = 0
+            self.target_joint_torque = 0
+            self.target_position = 0
+            self.target_velocity = 0
+        
+        elif state == MAIN_STATE.SENSING_POSITION:
+            self.kp = 0
+            self.ki = 0
+            self.kd = 0
+            self.target_joint_torque = 0
+            self.target_position = self.feedback[2]
+            self.target_velocity = 0
+            
+        elif state == MAIN_STATE.DEVELOPER:
+            self.kp = P_GAIN_HOMING
+            self.ki = I_GAIN_HOMING
+            self.kd = D_GAIN_HOMING
+            self.target_joint_torque = 0
+            self.target_position = 0
+            self.target_velocity = 0
+            
+        elif state == MAIN_STATE.DAMPING:
+            self.kp = P_GAIN
+            self.ki = I_GAIN
+            self.kd = D_GAIN
+            self.target_joint_torque = 0
+            self.target_position = 0
+            self.target_velocity = 0
+        
+        else:
+            self.kp = 0
+            self.ki = 0
+            self.kd = 0
+            self.target_joint_torque = 0
+            self.target_position = 0
+            self.target_velocity = 0
+            
+    def zero_reached(self) -> bool:
+        # later should be smarter to understand overflows etc.
+        if self.feedback[2] + ZERO_MARGIN > 0 and self.feedback[2] - ZERO_MARGIN < 0:
+            return True
+        else:
+            return False
 
     def status(self):
         statusword, velocity, position, torque = self.feedback
         return {
             "type": "status",
-            "state": self.epos_state_name(),
+            "epos_state": self.get_epos_state_name(),
+            "main_state": self.get_main_state_name(),
             "statusword": f"0x{statusword:04X}",
-            "position_inc": position / self.position_scale,
-            "target_inc": self.target_position,
-            "target_velocity": self.target_velocity,
-            "velocity_raw": velocity,
-            "torque_mNm": torque,
-            "kp_mNm_per_rad": self.kp,
-            "kd_mNm_s_per_rad": self.kd,
+            "dq": velocity,
+            "q": position / self.position_scale,
+            "t": torque,
+            "dq_target": self.target_velocity,
+            "q_target": self.target_position,
+            "t_target": self.target_joint_torque,
+            "kp": self.kp,
+            "ki": self.ki,
+            "kd": self.kd,
             "fault": bool(statusword & EPOS_STATE.MASK_FAULT),
         }
 
@@ -439,7 +512,7 @@ class JPVTController:
         self.master.close()
 
 
-def handle_command(controller, command):
+def handle_command(controller: JPVTController, command):
     name = command.get("command")
     if name == "status":
         return controller.status(), False
@@ -511,24 +584,53 @@ def reply(client, message):
     client.close()
 
 
-def run_server(controller):
+def run_server(controller: JPVTController):
     server = open_server()
     client = None
     client_data = bytearray()
     quitting = False
+    counter = 0
+    first_entry = True
     try:
         while not quitting:
             cycle_start = time.monotonic()
             
             # EPOS state
-            epos_state = controller.epos_state()
+            epos_state = controller.get_epos_state()
             if epos_state == EPOS_STATE.OPERATION_ENABLED:
                 cw = CW.ENABLE_OPERATION
             else:
                 cw = CW.DISABLE_VOLTAGE
                 
             # MAIN state
+            state = controller.get_main_state()
+            if state == MAIN_STATE.INITIALIZED:
+                counter = 0
+                controller.prepare_state(MAIN_STATE.SENSING_POSITION)
             
+            elif state == MAIN_STATE.SENSING_POSITION:
+                # do nothing, just read filtered position
+                counter += 1
+                if counter >= 1000:
+                    controller.prepare_state(MAIN_STATE.DEVELOPER)
+            
+            elif state == MAIN_STATE.DEVELOPER:
+                if first_entry:
+                    first_entry = False
+                    controller.prepare_state(MAIN_STATE.DEVELOPER)
+                # get to zero position slowly
+                if controller.zero_reached():
+                    controller.prepare_state(MAIN_STATE.DAMPING)
+                    first_entry = True
+                    
+            elif state == MAIN_STATE.DAMPING:
+                if first_entry:
+                    first_entry = False
+                    controller.prepare_state(MAIN_STATE.DAMPING)
+                # do whatever
+            
+            else:
+                controller.prepare_state(MAIN_STATE.SENSING_POSITION)
             
             controller.cycle(cw)
             
@@ -544,7 +646,7 @@ def run_server(controller):
                 reply(client, response)
                 client = None
                 client_data = bytearray()
-            if controller.epos_state() == EPOS_STATE.MASK_FAULT:
+            if controller.get_epos_state() == EPOS_STATE.MASK_FAULT:
                 raise RuntimeError(f"[EPOS] Drive fault: SW=0x{controller.feedback[0]:04X}")
             remaining = CYCLE_S - (time.monotonic() - cycle_start)
             if remaining > 0:

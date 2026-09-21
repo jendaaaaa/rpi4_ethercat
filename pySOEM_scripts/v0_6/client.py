@@ -1,12 +1,8 @@
-"""Send one command to jpvt_json_process.py and print its response."""
-
 import argparse
 import json
 import socket
 
-
 SOCKET_PATH = "/tmp/jpvt.sock"
-
 
 def send_command(command):
     with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
@@ -21,7 +17,6 @@ def send_command(command):
             data.extend(chunk)
 
     return json.loads(bytes(data).split(b"\n", 1)[0])
-
 
 def parse_arguments():
     parser = argparse.ArgumentParser()
@@ -38,7 +33,6 @@ def parse_arguments():
     move.add_argument("gains", nargs="*", metavar="GAIN VALUE")
 
     return parser, parser.parse_args()
-
 
 def main():
     parser, args = parse_arguments()
