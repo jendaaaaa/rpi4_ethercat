@@ -577,9 +577,17 @@ def handle_command(controller: JPVTController, command):
         controller.enable()
         return {"type": "result", "command": name, "ok": True}, False
     if name == "state":
-        state_requested = command.get("state")
-        # controller.request_state(state_requested)
-        # return {"type": "result", "command": name, "ok": True, "state_req": controller.state_requested.name, "state_curr": controller.get_epos_state_name}, False
+        state_cmd = command.get("state")
+        if not isinstance(state_cmd, str):
+            raise ValueError("state must be a string")
+        state = state_cmd.strip().upper()
+        if state == "DEVELOPER":
+            controller.request_state(MAIN_STATE.MOVING_TO_ZERO)
+        elif state == "DAMPING":
+            controller.request_state(MAIN_STATE.DAMPING)
+        else:
+            raise ValueError(f"Invalid state request!")
+        return {"type": "result", "command": name, "ok": True, "state_req": controller.state_requested.name, "state_curr": controller.get_epos_state_name}, False
     if name == "move":
         controller.move_target(
             command.get("q"), command.get("dq"), command.get("kp"), command.get("kd")
