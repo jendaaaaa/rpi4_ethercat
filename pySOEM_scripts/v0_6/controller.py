@@ -20,11 +20,11 @@ P_GAIN = 40_000
 I_GAIN = 0
 D_GAIN = 1_000
 
-P_GAIN_HOMING = 40_000
-I_GAIN_HOMING = 0
-D_GAIN_HOMING = 1_000
+P_GAIN_DEVELOPER = 40_000
+I_GAIN_DEVELOPER = 0
+D_GAIN_DEVELOPER = 1_000
 
-ZERO_MARGIN = 5
+ZERO_MARGIN = 10
 
 JOINT_TORQUE_LIMIT_MNM = 1000
 JPVT_MODE = -64
@@ -365,32 +365,33 @@ class JPVTController:
         self._set_cw(CW.SHUTDOWN, EPOS_STATE.READY_TO_SWITCH_ON)
         self._set_cw(CW.DISABLE_VOLTAGE, EPOS_STATE.SWITCH_ON_DISABLED)
         
-    def move_target(self, q, dq: int = 0, kp = None, kd = None):
+    def move_target(self, q, dq = 0, kp = None, kd = None):
         if self.get_epos_state() != EPOS_STATE.OPERATION_ENABLED:
             raise ValueError("[EPOS] Drive must be enabled before moving")
         if self.get_main_state() != MAIN_STATE.DAMPING:
             raise ValueError("[Main] Main must be in DAMPING mode before moving")
-        if not (self._valid_target(q) and self._valid_target(dq)):
+        if not (self._valid_target(q, "q") and self._valid_target(dq, "dq")):
             raise ValueError("[Main] Skipped move command")
         
         kp = self._norm_gain(kp, P_GAIN, "kp")
         kd = self._norm_gain(kd, D_GAIN, "kd")
-        log(f"q = {q}, dq = {dq}, kp = {kp}, kd = {kd}")
+        # log(f"q = {q}, dq = {dq}, kp = {kp}, kd = {kd}")
         
         self.kp = kp
         self.kd = kd
         self.target_position = q
         self.target_velocity = dq
 
-    def _valid_target(self, value, name) -> bool:
+    def _valid_target(self, value, name:str = "none") -> bool:
         if isinstance(value, bool) or not isinstance(value, int):
             raise ValueError(f"[Main] Value of {name} must be a whole number")
         if not -(1 << 31) <= value < (1 << 31):
             raise ValueError(f"[Main] Value of {name} exceeds the signed 32-bit range")
+        return True
 
     def _norm_gain(self, value, default, name):
         if value is None:
-            value = default
+            return default
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise ValueError(f"[Main] {name} must be a number")
         if not math.isfinite(value) or value < 0:
@@ -421,7 +422,7 @@ class JPVTController:
     def get_main_state_name(self):
         return MAIN_STATE(self.state).name
     
-    def prepare_state(self, state: MAIN_STATE) -> None:
+    def move_state(self, state: MAIN_STATE) -> None:
         if state not in MAIN_STATE:
             raise ValueError(f"[Main] {state} invalid state value!")
         self.state = state
@@ -439,13 +440,13 @@ class JPVTController:
             self.ki = 0
             self.kd = 0
             self.target_joint_torque = 0
-            self.target_position = self.feedback[2]
+            self.target_position = 0
             self.target_velocity = 0
             
         elif state == MAIN_STATE.DEVELOPER:
-            self.kp = P_GAIN_HOMING
-            self.ki = I_GAIN_HOMING
-            self.kd = D_GAIN_HOMING
+            self.kp = P_GAIN_DEVELOPER
+            self.ki = I_GAIN_DEVELOPER
+            self.kd = D_GAIN_DEVELOPER
             self.target_joint_torque = 0
             self.target_position = 0
             self.target_velocity = 0
@@ -468,7 +469,9 @@ class JPVTController:
             
     def zero_reached(self) -> bool:
         # later should be smarter to understand overflows etc.
-        if self.feedback[2] + ZERO_MARGIN > 0 and self.feedback[2] - ZERO_MARGIN < 0:
+        statusword, velocity, position_raw, torque = self.feedback
+        position = position_raw / self.position_scale
+        if (position + ZERO_MARGIN > 0) and (position - ZERO_MARGIN < 0):
             return True
         else:
             return False
@@ -489,6 +492,7 @@ class JPVTController:
             "kp": self.kp,
             "ki": self.ki,
             "kd": self.kd,
+            "zero_reached": self.zero_reached(),
             "fault": bool(statusword & EPOS_STATE.MASK_FAULT),
         }
 
@@ -525,10 +529,11 @@ def handle_command(controller: JPVTController, command):
         )
         return {
             "type": "result", "command": name, "ok": True,
-            "target_q": controller.target_position,
-            "target_dq": controller.target_velocity,
-            "kp_mNm_per_rad": controller.kp,
-            "kd_mNm_s_per_rad": controller.kd,
+            "q_target": controller.target_position,
+            "dq_target": controller.target_velocity,
+            "t_target": controller.target_joint_torque,
+            "kp": controller.kp,
+            "kd": controller.kd,
         }, False
     if name == "disable":
         controller.disable()
@@ -590,7 +595,7 @@ def run_server(controller: JPVTController):
     client_data = bytearray()
     quitting = False
     counter = 0
-    first_entry = True
+    motor_enabled = False
     try:
         while not quitting:
             cycle_start = time.monotonic()
@@ -599,38 +604,46 @@ def run_server(controller: JPVTController):
             epos_state = controller.get_epos_state()
             if epos_state == EPOS_STATE.OPERATION_ENABLED:
                 cw = CW.ENABLE_OPERATION
+                motor_enabled = True
             else:
                 cw = CW.DISABLE_VOLTAGE
+                motor_enabled = False
                 
             # MAIN state
             state = controller.get_main_state()
-            if state == MAIN_STATE.INITIALIZED:
+            
+            if not motor_enabled:
+                controller.move_state(MAIN_STATE.INITIALIZED)
                 counter = 0
-                controller.prepare_state(MAIN_STATE.SENSING_POSITION)
-            
-            elif state == MAIN_STATE.SENSING_POSITION:
-                # do nothing, just read filtered position
-                counter += 1
-                if counter >= 1000:
-                    controller.prepare_state(MAIN_STATE.DEVELOPER)
-            
-            elif state == MAIN_STATE.DEVELOPER:
-                if first_entry:
-                    first_entry = False
-                    controller.prepare_state(MAIN_STATE.DEVELOPER)
-                # get to zero position slowly
-                if controller.zero_reached():
-                    controller.prepare_state(MAIN_STATE.DAMPING)
-                    first_entry = True
-                    
-            elif state == MAIN_STATE.DAMPING:
-                if first_entry:
-                    first_entry = False
-                    controller.prepare_state(MAIN_STATE.DAMPING)
-                # do whatever
-            
+                
             else:
-                controller.prepare_state(MAIN_STATE.SENSING_POSITION)
+                if state == MAIN_STATE.INITIALIZED:
+                    counter = 0
+                    controller.move_state(MAIN_STATE.SENSING_POSITION)
+                
+                elif state == MAIN_STATE.SENSING_POSITION:
+                    counter += 1
+                    if counter > 1_000:
+                        # log(f"SENSING_POSITION done, going to DEVELOPER")
+                        controller.move_state(MAIN_STATE.DEVELOPER)
+                        counter = 0
+                
+                elif state == MAIN_STATE.DEVELOPER:
+                    # counter += 1
+                    # if counter % 1_000:
+                        # log(f"{controller.target_position}, {controller.feedback[2] / controller.position_scale}")
+                        
+                    # get to zero position slowly
+                    if controller.zero_reached():
+                        counter = 0
+                        controller.move_state(MAIN_STATE.DAMPING)
+                        
+                elif state == MAIN_STATE.DAMPING:
+                    # do whatever
+                    pass
+                
+                else:
+                    controller.move_state(MAIN_STATE.INITIALIZED)
             
             controller.cycle(cw)
             
