@@ -68,3 +68,7 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 #### 15.9.
 - working version v0_3 extended with commanding PID gain values as a preparation for implementing the DDS or the unitree BS
 - adding v0_5 to set target instead of position relative.
+
+#### 21.9.
+- working version v0_6 that has explicit hex cw and sw, all named.
+- implemented automatic state machine to mimic unitree h1_2

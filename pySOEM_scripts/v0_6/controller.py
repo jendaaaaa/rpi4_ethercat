@@ -20,9 +20,9 @@ P_GAIN = 40_000
 I_GAIN = 0
 D_GAIN = 1_000
 
-P_GAIN_DEVELOPER = 40_000
+P_GAIN_DEVELOPER = 38_000
 I_GAIN_DEVELOPER = 0
-D_GAIN_DEVELOPER = 1_000
+D_GAIN_DEVELOPER = 1_100
 
 ZERO_MARGIN = 10
 
@@ -175,7 +175,7 @@ class JPVTController:
             time.sleep(0.2)
             self.set_sdo(SDO.CONTROLWORD, CW.FAULT_RESET_0)
             time.sleep(0.2)
-            if self.get_sdo(SDO.CONTROLWORD) & EPOS_STATE.MASK_FAULT:
+            if self.get_sdo(SDO.STATUSWORD) & EPOS_STATE.MASK_FAULT:
                 raise RuntimeError("[EPOS] Startup fault did not clear!")
         else:
             log(f"[EPOS] Startup fault clear")
@@ -452,8 +452,8 @@ class JPVTController:
             self.target_velocity = 0
             
         elif state == MAIN_STATE.DAMPING:
-            self.kp = P_GAIN
-            self.ki = I_GAIN
+            self.kp = 0
+            self.ki = 0
             self.kd = D_GAIN
             self.target_joint_torque = 0
             self.target_position = 0
@@ -635,12 +635,18 @@ def run_server(controller: JPVTController):
                         
                     # get to zero position slowly
                     if controller.zero_reached():
+                        counter += 1
+                        if counter > 1_000:
+                            log(f"kp = {controller.kp}, ki = {controller.ki}, kd = {controller.kd}")
+                            controller.move_state(MAIN_STATE.DAMPING)
+                    else:
                         counter = 0
-                        controller.move_state(MAIN_STATE.DAMPING)
                         
                 elif state == MAIN_STATE.DAMPING:
-                    # do whatever
-                    pass
+                    controller.move_state(MAIN_STATE.DAMPING)
+                    
+                    # # do whatever
+                    # pass
                 
                 else:
                     controller.move_state(MAIN_STATE.INITIALIZED)
