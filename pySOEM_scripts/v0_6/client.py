@@ -27,6 +27,9 @@ def parse_arguments():
     commands.add_parser("disable")
     commands.add_parser("quit")
     
+    state = commands.add_parser("state")
+    state.add_argument("state")
+    
     move = commands.add_parser("move")
     move.add_argument("q", type=int)
     move.add_argument("dq", type=int)
@@ -37,6 +40,9 @@ def parse_arguments():
 def main():
     parser, args = parse_arguments()
     command = {"command": args.command.replace("-", "_")}
+    if args.command == "state":
+        command["state"] = args.state
+    
     if args.command == "move":
         command["q"] = args.q
         command["dq"] = args.dq
