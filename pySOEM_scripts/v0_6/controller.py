@@ -17,7 +17,7 @@ SOCKET_PATH = "/tmp/jpvt.sock"
 CYCLE_S = 0.002
 
 N_CYCLES_SENSING_POSITION = 1_000
-N_CYCLES_ZERO_POSITION = 500
+N_CYCLES_HOLD_POSITION = 500
 
 P_GAIN_MOVE_TARGET = 40_000
 I_GAIN_MOVE_TARGET = 0
@@ -130,11 +130,12 @@ class MAIN_STATE(IntEnum):
     DEAD                = 0
     POWERED             = 1
     INITIALIZED         = 2
-    SENSING_POSITION    = 3
-    POSITION_READY      = 4
+    POSITION_SENSING    = 3
+    SENSOR_READY        = 4
     MOVING_TO_ZERO      = 5
     ZERO_READY          = 6
     DAMPING             = 7
+    ACTION              = 8
 
 # ControlWord
 class CW(IntEnum):
@@ -153,13 +154,13 @@ ALLOWED_TRANSITIONS = {
         MAIN_STATE.INITIALIZED
     },
     MAIN_STATE.INITIALIZED: {
-        MAIN_STATE.SENSING_POSITION
+        MAIN_STATE.POSITION_SENSING
     },
-    MAIN_STATE.SENSING_POSITION: {
+    MAIN_STATE.POSITION_SENSING: {
         MAIN_STATE.INITIALIZED,
-        MAIN_STATE.POSITION_READY
+        MAIN_STATE.SENSOR_READY
     },
-    MAIN_STATE.POSITION_READY: {
+    MAIN_STATE.SENSOR_READY: {
         MAIN_STATE.INITIALIZED,
         MAIN_STATE.MOVING_TO_ZERO
     },
@@ -173,8 +174,14 @@ ALLOWED_TRANSITIONS = {
     },
     MAIN_STATE.DAMPING: {
         MAIN_STATE.INITIALIZED,
-        MAIN_STATE.MOVING_TO_ZERO
-    }
+        MAIN_STATE.MOVING_TO_ZERO,
+        MAIN_STATE.ACTION
+    },
+    MAIN_STATE.ACTION: {
+        MAIN_STATE.INITIALIZED,
+        MAIN_STATE.MOVING_TO_ZERO,
+        MAIN_STATE.DAMPING
+    },
 }
 
 class JPVTController:
@@ -397,7 +404,7 @@ class JPVTController:
             time.sleep(CYCLE_S)
 
     def enable(self):
-        self.target_position = self.current_position()
+        self.target_position = 0
         self.target_velocity = 0
         self.target_joint_torque = 0
         self.kp = 0
@@ -472,8 +479,7 @@ class JPVTController:
         if state not in ALLOWED_TRANSITIONS[self.state]:
             self.state_requested = None
             raise ValueError(f"[Main] {state.name} cannot be reached from {self.state.name}!")
-        log(f">> NEW STATE: {state}")
-        # self.state_requested = state
+        self.state_requested = state
     
     def move_state(self, state: MAIN_STATE) -> None:
         if state not in MAIN_STATE:
@@ -489,7 +495,15 @@ class JPVTController:
             self.target_position = 0
             self.target_velocity = 0
         
-        elif state == MAIN_STATE.SENSING_POSITION:
+        elif state == MAIN_STATE.POSITION_SENSING:
+            self.kp = 0
+            self.ki = 0
+            self.kd = 0
+            self.target_joint_torque = 0
+            self.target_position = 0
+            self.target_velocity = 0
+        
+        elif state == MAIN_STATE.SENSOR_READY:
             self.kp = 0
             self.ki = 0
             self.kd = 0
@@ -520,6 +534,15 @@ class JPVTController:
             self.target_joint_torque = 0
             self.target_position = 0
             self.target_velocity = 0
+            
+        elif state == MAIN_STATE.ACTION:
+            pass
+            # self.kp = 0
+            # self.ki = 0
+            # self.kd = 0
+            # self.target_joint_torque = 0
+            # self.target_position = 0
+            # self.target_velocity = 0
         
         else:
             self.kp = 0
@@ -529,11 +552,11 @@ class JPVTController:
             self.target_position = 0
             self.target_velocity = 0
             
-    def zero_reached(self) -> bool:
+    def q_reached(self, q: int = 0) -> bool:
         # later should be smarter to understand overflows etc.
         statusword, velocity, position_raw, torque = self.feedback
         position = position_raw / self.position_scale
-        if (position + ZERO_MARGIN > 0) and (position - ZERO_MARGIN < 0):
+        if (position + ZERO_MARGIN > q) and (position - ZERO_MARGIN < q):
             return True
         else:
             return False
@@ -554,7 +577,7 @@ class JPVTController:
             "kp": self.kp,
             "ki": self.ki,
             "kd": self.kd,
-            "zero_reached": self.zero_reached(),
+            "zero_reached": self.q_reached(),
             "fault": bool(statusword & EPOS_STATE.MASK_FAULT),
         }
 
@@ -604,9 +627,9 @@ def handle_command(controller: JPVTController, command):
             "state_curr": controller.get_main_state()
         }, False
     if name == "move":
-        controller.move_target(
-            command.get("q"), command.get("dq"), command.get("kp"), command.get("kd")
-        )
+        controller.request_state(MAIN_STATE.ACTION)
+        q, dq, kp, kd = command.get("q"), command.get("dq"), command.get("kp"), command.get("kd")
+        controller.move_target(q, dq, kp, kd)
         return {
             "type": "result", "command": name, "ok": True,
             "q_target": controller.target_position,
@@ -700,22 +723,23 @@ def run_server(controller: JPVTController):
             else:
                 if state == MAIN_STATE.INITIALIZED:
                     counter = 0
-                    controller.move_state(MAIN_STATE.SENSING_POSITION)
+                    controller.move_state(MAIN_STATE.POSITION_SENSING)
                     
-                elif state == MAIN_STATE.SENSING_POSITION:
+                elif state == MAIN_STATE.POSITION_SENSING:
                     counter += 1
                     if counter > N_CYCLES_SENSING_POSITION:
-                        controller.move_state(MAIN_STATE.POSITION_READY)
+                        controller.move_state(MAIN_STATE.SENSOR_READY)
                         counter = 0
                 
-                # elif state == MAIN_STATE.POSITION_READY:
-                #     if state_requested == MAIN_STATE.MOVING_TO_ZERO:
-                #         controller.move_state(state_requested)
+                elif state == MAIN_STATE.SENSOR_READY:
+                    pass
+                    # if state_requested == MAIN_STATE.MOVING_TO_ZERO:
+                    #     controller.move_state(state_requested)
                         
                 elif state == MAIN_STATE.MOVING_TO_ZERO:
-                    if controller.zero_reached():
+                    if controller.q_reached(0):
                         counter += 1
-                        if counter > N_CYCLES_ZERO_POSITION:
+                        if counter > N_CYCLES_HOLD_POSITION:
                             controller.move_state(MAIN_STATE.ZERO_READY)
                             counter = 0
                     else:
@@ -727,11 +751,23 @@ def run_server(controller: JPVTController):
                 #         counter = 0
                 
                 elif state == MAIN_STATE.DAMPING:
-                    pass
+                    coutner = 0
                 
                 
-                if state != controller.state_requested and controller.state_requested is not None:
-                    controller.move_state(state)
+                elif state == MAIN_STATE.ACTION:
+                    counter = 0
+                    
+                    # if controller.q_reached(controller.target_position):
+                    #     counter += 1
+                    #     if counter > N_CYCLES_HOLD_POSITION:
+                    #         controller.move_state(MAIN_STATE.DAMPING)
+                    #         counter = 0
+                    # else:
+                    #     counter = 0
+                
+                
+            if controller.state != controller.state_requested and controller.state_requested is not None:
+                controller.move_state(controller.state_requested)
                 
                 # elif state == MAIN_STATE.SENSING_POSITION:
                 #     counter += 1
