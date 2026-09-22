@@ -72,3 +72,6 @@ Place for notes about making the EtherCAT work with HEJ maxon system.
 #### 21.9.
 - working version v0_6 that has explicit hex cw and sw, all named.
 - implemented automatic state machine to mimic unitree h1_2
+
+#### 22.9.
+- Final version v0_6 done, working state machine with commands.
