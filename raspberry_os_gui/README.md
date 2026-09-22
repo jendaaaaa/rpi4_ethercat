@@ -233,3 +233,46 @@ CD to a directory with the Python scripts and use it like this:
 ```bash
 run_realtime run_jpvt.py
 ```
+
+## UniTree SDK2 Python
+To install this SDK for DDS communication, Python 3.10 will be needed. For a safe install, use miniforge.
+
+### MiniForge
+Install.
+
+```bash
+cd ~
+wget https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh
+bash Miniforge3-Linux-aarch64.sh
+```
+
+Accept all the default values and T&C. Then activate using this:
+
+```bash
+source ~/.bashrc
+```
+
+Now it shows `(base)`. Create new env with Python3.10.
+
+```bash
+conda create -n unitree python=3.10
+```
+
+Activate the env.
+
+```bash
+conda activate unitree
+```
+
+To deactivate, run this.
+
+```bash
+conda deactivate
+```
+
+To disable the auto-activation of the `base` env, run these:
+
+```bash
+conda config --set auto_activate_base false
+conda deactivate
+```
