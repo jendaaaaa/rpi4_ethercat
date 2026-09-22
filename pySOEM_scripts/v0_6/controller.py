@@ -172,7 +172,8 @@ ALLOWED_TRANSITIONS = {
         MAIN_STATE.DAMPING  
     },
     MAIN_STATE.DAMPING: {
-        MAIN_STATE.INITIALIZED
+        MAIN_STATE.INITIALIZED,
+        MAIN_STATE.MOVING_TO_ZERO
     }
 }
 
@@ -595,7 +596,13 @@ def handle_command(controller: JPVTController, command):
             controller.request_state(MAIN_STATE.DAMPING)
         else:
             raise ValueError(f"Invalid state request!")
-        return {"type": "result", "command": name, "ok": True, "state_req": controller.state_requested.name, "state_curr": controller.get_epos_state_name}, False
+        return {
+            "type": "result",
+            "command": name,
+            "ok": True,
+            "state_req": controller.state_requested,
+            "state_curr": controller.get_main_state()
+        }, False
     if name == "move":
         controller.move_target(
             command.get("q"), command.get("dq"), command.get("kp"), command.get("kd")
@@ -701,9 +708,9 @@ def run_server(controller: JPVTController):
                         controller.move_state(MAIN_STATE.POSITION_READY)
                         counter = 0
                 
-                elif state == MAIN_STATE.POSITION_READY:
-                    if state_requested == MAIN_STATE.MOVING_TO_ZERO:
-                        controller.move_state(state_requested)
+                # elif state == MAIN_STATE.POSITION_READY:
+                #     if state_requested == MAIN_STATE.MOVING_TO_ZERO:
+                #         controller.move_state(state_requested)
                         
                 elif state == MAIN_STATE.MOVING_TO_ZERO:
                     if controller.zero_reached():
@@ -714,10 +721,10 @@ def run_server(controller: JPVTController):
                     else:
                         counter = 0
                 
-                elif state == MAIN_STATE.ZERO_READY:
-                    if state_requested == MAIN_STATE.DAMPING:
-                        controller.move_state(state_requested)
-                        counter = 0
+                # elif state == MAIN_STATE.ZERO_READY:
+                #     if state_requested == MAIN_STATE.DAMPING:
+                #         controller.move_state(state_requested)
+                #         counter = 0
                 
                 elif state == MAIN_STATE.DAMPING:
                     pass
