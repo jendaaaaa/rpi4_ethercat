@@ -226,7 +226,7 @@ chmod +x ~/run_realtime
 Make it a global command.
 
 ```bash
-sudo mv ~/run-realtime /usr/local/bin/run-realtime
+sudo mv ~/run_realtime /usr/local/bin/run_realtime
 ```
 
 CD to a directory with the Python scripts and use it like this:
@@ -287,4 +287,25 @@ While the env is active, just run install.
 conda env list
 conda activate unitree
 pip install pysoem
+```
+
+### 4. Shell script update
+Now the shell script has to be updated to use this python env. Follow the instructions above and edit the executable shell script to this.
+
+```bash
+#!/bin/bash
+# Check if an argument was provided
+if [ -z "$1" ]; then
+    echo "Usage: run_realtime <path_to_script.py>"
+    exit 1
+fi
+
+# The base command with your preferred real-time settings
+# We use "$@" to pass any arguments provided to this script
+
+# sudo taskset -c 3 chrt -f 99 /home/admin/PySOEM/.venv/bin/python3 "$@"
+
+CONDA_PYTHON="/home/admin/miniforge3/envs/unitree/bin/python"
+sudo taskset -c 3 chrt -f 99 "$CONDA_PYTHON" "$@"
+
 ```
