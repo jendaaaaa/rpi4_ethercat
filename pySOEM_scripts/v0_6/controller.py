@@ -459,9 +459,16 @@ class JPVTController:
         if statusword & EPOS_STATE.MASK_FAULT:
             return EPOS_STATE.MASK_FAULT
         current_state = statusword & EPOS_STATE.MASK_STATE
-        if current_state not in EPOS_STATE:
+        
+        # for older Python
+        try:
+            return EPOS_STATE(current_state)
+        except ValueError:
             return None
-        return current_state
+        
+        # if current_state not in EPOS_STATE:
+        #     return None
+        # return current_state
     
     def get_epos_state_name(self):
         current_state = self.get_epos_state()
@@ -482,8 +489,18 @@ class JPVTController:
         self.state_requested = state
     
     def move_state(self, state: MAIN_STATE) -> None:
-        if state not in MAIN_STATE:
+        #### for older Python
+        if not isinstance(state, MAIN_STATE):
             raise ValueError(f"[Main] {state} invalid state value!")
+        
+        #### alternative
+        # try:
+        #     state = MAIN_STATE(state)
+        # except (ValueError, TypeError):
+        #     raise ValueError(f"[Main] {state} invalid state value!")
+        
+        # if state not in MAIN_STATE:
+        #     raise ValueError(f"[Main] {state} invalid state value!")
         self.state = state
         self.state_requested = None
         
