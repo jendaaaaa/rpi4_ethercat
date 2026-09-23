@@ -237,7 +237,7 @@ run_realtime run_jpvt.py
 ## UniTree SDK2 Python
 To install this SDK for DDS communication, Python 3.10 will be needed. For a safe install, use miniforge.
 
-### MiniForge
+### 1. MiniForge
 Install.
 
 ```bash
@@ -275,4 +275,16 @@ To disable the auto-activation of the `base` env, run these:
 ```bash
 conda config --set auto_activate_base false
 conda deactivate
+```
+
+### 2. Unitree SDK2 Python
+Follow instructions from [unitree_sdk2py](https://github.com/unitreerobotics/unitree_sdk2_python/tree/master) github. With Python3.10 it works fine, only the *CycloneDDS* has to be built locally for this device.
+
+### 3. PySOEM
+While the env is active, just run install.
+
+```bash
+conda env list
+conda activate unitree
+pip install pysoem
 ```
